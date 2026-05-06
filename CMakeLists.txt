@@ -1,72 +1,55 @@
-#---------------------------------------------------------------------------#
-# Copyright (c) 2018-2020 Mikhail Komarov <nemo@nil.foundation>
-#
-# Distributed under the Boost Software License, Version 1.0
-# See accompanying file LICENSE_1_0.txt or copy at
-# http://www.boost.org/LICENSE_1_0.txt
-#---------------------------------------------------------------------------#
-
-cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
-
-set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
-
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake"
-        "${CMAKE_CURRENT_LIST_DIR}/cmake/packages"
-        "${CMAKE_CURRENT_LIST_DIR}/cmake/modules/share/modules/cmake")
-
-set(CMAKE_PREFIX_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/modules")
-
-find_package(CM)
 include(CMConfig)
 include(CMSetupVersion)
 
-cm_workspace(crypto3)
-cm_setup_version(VERSION 0.3.0 PREFIX ${CMAKE_WORKSPACE_NAME})
-
-option(BUILD_TESTS "Enable tests" TRUE)# used by CMTest module; If set to false, tests are removed from crypto3::all target. User still can build individual ones.
-option(BUILD_CRYPTO3_BENCH_TESTS "Build performance benchmark tests" FALSE)
-option(BUILD_DOCS "Build with configuring Doxygen documentation compiler" FALSE)
-
-# The file compile_commands.json is generated in build directory, so LSP could
-# pick it up and guess all include paths, defines and other stuff.
-if(CMAKE_EXPORT_COMPILE_COMMANDS)
-    set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES
-            ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
+if(NOT CMAKE_WORKSPACE_NAME OR NOT ("${CMAKE_WORKSPACE_NAME}" STREQUAL "crypto3"))
+    cm_workspace(crypto3)
 endif()
 
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-    add_compile_options(-fdiagnostics-color=always)
-elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-    add_compile_options(-fcolor-diagnostics)
+option(ZK_PLACEHOLDER_PROFILING_ENABLED "Build with placeholder profiling" FALSE)
+option(ZK_PLACEHOLDER_DEBUG_ENABLED "Build with placeholder testing inside" FALSE)
+
+if(PROFILING_ENABLED)
+    add_definitions(-DPROFILING_ENABLED)
 endif()
 
-set(BUILD_WITH_TARGET_ARCHITECTURE "" CACHE STRING "Target build architecture") # TODO: check if we can do cross-compilation
-set(DOXYGEN_OUTPUT_DIR "${CMAKE_CURRENT_LIST_DIR}/docs" CACHE STRING "Specify doxygen output directory")
-
-include(TargetArchitecture)
-
-if(BUILD_WITH_TARGET_ARCHITECTURE)
-    set(CMAKE_TARGET_ARCHITECTURE ${BUILD_WITH_TARGET_ARCHITECTURE})
-else()
-    target_architecture(CMAKE_TARGET_ARCHITECTURE)
+if(ZK_PLACEHOLDER_DEBUG_ENABLED)
+    add_definitions(-DZK_PLACEHOLDER_DEBUG_ENABLED)
 endif()
 
-find_package(Boost REQUIRED COMPONENTS
-        container random filesystem log log_setup program_options thread unit_test_framework timer)
+cm_project(zk WORKSPACE_NAME ${CMAKE_WORKSPACE_NAME} LANGUAGES C CXX)
 
-function(add_tests)
-    if(BUILD_TESTS)
-        add_subdirectory(test)
-    endif()
-endfunction(add_tests)
+include(CMDeploy)
+include(FindPkgConfig)
 
-add_subdirectories("${CMAKE_CURRENT_LIST_DIR}/libs/")
-add_subdirectories("${CMAKE_CURRENT_LIST_DIR}/libs/marshalling/")
+cm_setup_version(VERSION 0.1.0 PREFIX ${CMAKE_WORKSPACE_NAME}_${CURRENT_PROJECT_NAME})
 
-if(BUILD_CRYPTO3_BENCH_TESTS)
-    add_subdirectory(benchmarks)
-endif()
+add_library(${CMAKE_WORKSPACE_NAME}_${CURRENT_PROJECT_NAME} INTERFACE)
+add_library(${CMAKE_WORKSPACE_NAME}::${CURRENT_PROJECT_NAME} ALIAS ${CMAKE_WORKSPACE_NAME}_${CURRENT_PROJECT_NAME})
 
-configure_file(${CMAKE_CURRENT_LIST_DIR}/docs/doxygen/${CMAKE_WORKSPACE_NAME}.doxyfile.in
-        ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_WORKSPACE_NAME}.doxyfile @ONLY)
+set_target_properties(${CMAKE_WORKSPACE_NAME}_${CURRENT_PROJECT_NAME} PROPERTIES
+        EXPORT_NAME ${CURRENT_PROJECT_NAME})
+
+target_include_directories(${CMAKE_WORKSPACE_NAME}_${CURRENT_PROJECT_NAME} INTERFACE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>
+
+        $<$<BOOL:${Boost_FOUND}>:${Boost_INCLUDE_DIRS}>)
+
+target_link_libraries(${CMAKE_WORKSPACE_NAME}_${CURRENT_PROJECT_NAME} INTERFACE
+
+        Boost::container
+        Boost::log
+
+        # Containers and math implementation could be replaced with namespace change
+        crypto3::containers
+        crypto3::math
+        crypto3::algebra
+        crypto3::hash
+        crypto3::multiprecision)
+
+cm_deploy(TARGETS ${CMAKE_WORKSPACE_NAME}_${CURRENT_PROJECT_NAME}
+        INCLUDE include
+        NAMESPACE ${CMAKE_WORKSPACE_NAME}::)
+
+include(CMTest)
+cm_add_test_subdirectory(test)
