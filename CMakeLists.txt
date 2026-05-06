@@ -1,3 +1,10 @@
+cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
+
+list(APPEND CMAKE_MODULE_PATH
+       "${CMAKE_CURRENT_LIST_DIR}/cmake"
+       "${CMAKE_CURRENT_LIST_DIR}/cmake/packages"
+       "${CMAKE_CURRENT_LIST_DIR}/cmake/modules/share/modules/cmake")
+
 include(CMConfig)
 include(CMSetupVersion)
 
@@ -20,6 +27,12 @@ cm_project(zk WORKSPACE_NAME ${CMAKE_WORKSPACE_NAME} LANGUAGES C CXX)
 
 include(CMDeploy)
 include(FindPkgConfig)
+
+find_package(Boost REQUIRED COMPONENTS
+        container random filesystem log log_setup program_options thread unit_test_framework timer)
+
+add_subdirectory(crypto3)
+add_subdirectory(marshalling/zk)
 
 cm_setup_version(VERSION 0.1.0 PREFIX ${CMAKE_WORKSPACE_NAME}_${CURRENT_PROJECT_NAME})
 
